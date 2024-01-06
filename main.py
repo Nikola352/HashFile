@@ -1,11 +1,12 @@
 #!/usr/bin/python
 
 from app.hash_serial_overflow import HashFileSerialOverflow
+from app.hash_linked_overflow import HashFileLinkedOverflow
 from app.record import Record
 from app.constants import *
 
 def main():
-    file = HashFileSerialOverflow(FILENAME, Record(ATTRIBUTES, FMT, CODING), B, b, EMPTY_REC, EMPTY_KEY)
+    file = HashFileLinkedOverflow(FILENAME, Record(ATTRIBUTES, FMT, CODING), B, b, EMPTY_REC, EMPTY_KEY)
     file.init_file()
 
     file.insert_record({'id': 1, 'number': 1, 'string': 'prvi'})
