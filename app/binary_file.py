@@ -31,7 +31,7 @@ class BinaryFile:
 
         file.write(binary_data)
 
-    def read_block(self, file: BinaryIO):
+    def read_block(self, file: BinaryIO) -> List[Dict]:
         binary_data = file.read(self.block_size)
         block = []
 
