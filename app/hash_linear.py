@@ -86,15 +86,16 @@ class HashFileLinear(BinaryFile):
         
         with open(self.filename, "rb+") as f:
             curr_blk_idx, curr_rec_idx = block_idx, rec_idx
-            while True:
-                done = False
+            done = False
+            while not done:
                 f.seek(curr_blk_idx * self.block_size)
                 block = self.read_block(f)
                 block[curr_rec_idx] = self.empty_record
                 for i in range(curr_rec_idx, self.blocking_factor-1):
                     block[i] = block[i+1]
-                    if block[i] == self.empty_record:
+                    if block[i].get('id') == self.empty_key:
                         done = True
+                block[-1] = self.empty_record
                 if done:
                     break
                 seen_blocks = set()
