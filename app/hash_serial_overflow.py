@@ -92,7 +92,7 @@ class HashFileSerialOverflow(BinaryFile):
             f.seek(-self.block_size, 1)
             self.write_block(f, block)
                     
-    def delete_by_id(self, id) -> bool:
+    def logical_delete_by_id(self, id) -> bool:
         find_res = self.find_by_id(id)
         if find_res is None:
             return False
@@ -100,33 +100,78 @@ class HashFileSerialOverflow(BinaryFile):
 
         with open(self.filename, "rb+") as f:
             f.seek(block_idx * self.block_size)
+            bucket = self.read_block(f)
+            bucket[rec_idx]['status'] = 2
+            f.seek(-self.block_size, 1)
+            self.write_block(f, bucket)
+
+    def delete_by_id(self, id) -> bool:
+        find_res = self.find_by_id(id)
+        if find_res is None:
+            return False
+        block_idx, rec_idx = find_res
+
+        with open(self.filename, "rb+") as f:
             if block_idx < self.num_buckets:
-                # primary zone
+                # remove from primary zone
+                f.seek(block_idx * self.block_size)
                 bucket = self.read_block(f)
-                bucket[rec_idx]['status'] = 2
-                f.seek(-self.block_size, 1)
-                self.write_block(f, bucket)
-            else:
-                # overflow zone
-                block = self.read_block(f)
-                while block:
-                    for i in range(rec_idx, self.blocking_factor-1):
-                        block[i] = block[i+1]
-                        if block[i].get('id') == self.empty_key:
+                overflow = True
+                for i in range(rec_idx, self.blocking_factor-1):
+                    bucket[i] = bucket[i+1]
+                    if bucket[i].get('id') == self.empty_key:
+                        overflow = False
+                        break
+                if not overflow:
+                    f.seek(-self.block_size, 1)
+                    self.write_block(f, bucket)
+                    return True
+
+                # search for overflow record in overflow zone
+                f.seek(self.num_buckets * self.block_size)
+                overflow_block_idx = self.num_buckets - 1 # updated at the beginning of each iteration
+                overflow_rec_idx = None # None if no record with the same hash is found
+                while overflow_rec_idx is None:
+                    overflow_block_idx += 1
+                    overflow_block = self.read_block(f)
+                    if not overflow_block:
+                        break
+                    for i, rec in enumerate(overflow_block):
+                        if self.hash(rec.get('id')) == block_idx:
+                            overflow_rec_idx = i
                             break
-                    next_block = self.read_block(f)
-                    if next_block:
-                        block[-1] = next_block[0]
-                        if block[-1].get('id') == self.empty_key:
-                            os.ftruncate(f.fileno(), block_idx*self.block_size)
+                if overflow_rec_idx is not None:
+                    bucket[-1] = overflow_block[overflow_rec_idx]
+                else:
+                    bucket[-1] = self.empty_record
+                f.seek(block_idx * self.block_size)
+                self.write_block(f, bucket)
+                if overflow_rec_idx is None:
+                    return True
+                block_idx = overflow_block_idx
+                rec_idx = overflow_rec_idx
+            
+            # remove from overflow zone
+            f.seek(block_idx * self.block_size)
+            block = self.read_block(f)
+            while block:
+                for i in range(rec_idx, self.blocking_factor-1):
+                    block[i] = block[i+1]
+                    if block[i].get('id') == self.empty_key:
+                        break
+                next_block = self.read_block(f)
+                if next_block:
+                    block[-1] = next_block[0]
+                    if block[-1].get('id') == self.empty_key:
+                        os.ftruncate(f.fileno(), block_idx*self.block_size)
 
-                    f.seek(block_idx*self.block_size)
-                    self.write_block(f, block)
-                    f.seek(self.block_size, 1)
+                f.seek(block_idx*self.block_size)
+                self.write_block(f, block)
+                f.seek(self.block_size, 1)
 
-                    block = next_block
-                    block_idx += 1
-                    rec_idx = 0
+                block = next_block
+                block_idx += 1
+                rec_idx = 0
         return True
     
     def print_file(self):
