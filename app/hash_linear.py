@@ -86,8 +86,8 @@ class HashFileLinear(BinaryFile):
         
         with open(self.filename, "rb+") as f:
             curr_blk_idx, curr_rec_idx = block_idx, rec_idx
-            done = False
-            while not done:
+            while True:
+                done = False
                 f.seek(curr_blk_idx * self.block_size)
                 block = self.read_block(f)
                 block[curr_rec_idx] = self.empty_record
@@ -96,11 +96,12 @@ class HashFileLinear(BinaryFile):
                     if block[i] == self.empty_record:
                         done = True
                 if done:
-                    f.seek(-self.block_size, 1)
-                    self.write_block(f, block)
                     break
+                seen_blocks = set()
+                seen_blocks.add(curr_blk_idx)
                 next_idx = (curr_blk_idx + self.step) % self.num_buckets
                 while next_idx != block_idx:
+                    seen_blocks.add(next_idx)
                     f.seek(next_idx * self.block_size)
                     next_block = self.read_block(f)
                     next_rec_idx = None
@@ -108,12 +109,10 @@ class HashFileLinear(BinaryFile):
                         if rec.get('status') == 0:
                             done = True
                             break
-                        if self.hash(rec.get('id')) != next_idx:
+                        if self.hash(rec.get('id')) not in seen_blocks:
                             next_rec_idx = i
                             break
                     if done:
-                        f.seek(curr_blk_idx * self.block_size)
-                        self.write_block(f, block)
                         break
                     if next_rec_idx != None:
                         block[-1] = next_block[next_rec_idx]
@@ -123,6 +122,10 @@ class HashFileLinear(BinaryFile):
                         curr_rec_idx = next_rec_idx
                         break
                     next_idx = (next_idx + self.step) % self.num_buckets
+                if next_idx == block_idx:
+                    break
+            f.seek(curr_blk_idx * self.block_size)
+            self.write_block(f, block)
     
     def print_file(self):
         with open(self.filename, "rb") as f:
